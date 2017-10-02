@@ -7,7 +7,10 @@
 (defvar *feature-database* (make-hash-table :test #'equal))
 
 (defun clear-database ()
-  (setf *feature-database* (make-hash-table :test #'equal)))
+  (setf
+   *feature-database* (make-hash-table :test #'equal)
+   *total-spams* 0
+   *total-hams* 0))
 
 (defun classification (score)
   (cond
@@ -52,5 +55,24 @@
 
 (defun extract-features (text)
   (mapcar #'intern-feature (extract-words text)))
+
+
+(defvar *total-spams* 0)
+(defvar *total-hams* 0)
+
+(defun increment-total-count (type)
+  (ecase type
+    (ham (incf *total-hams*))
+    (spam (incf *total-spams*))))
+
+(defun increment-count (feature type)
+  (ecase type
+    (ham (incf (ham-count feature)))
+    (spam (incf (spam-count feature)))))
+
+(defun train (text type)
+  (dolist (feature (extract-features text))
+    (increment-count feature type))
+  (increment-total-count type))
 
 
