@@ -1,9 +1,10 @@
 (in-package :com.nwps.spam)
 
-
+;; Global variables defenition
 (defparameter *max-ham-score* .4)
 (defparameter *min-spam-score* .6)
 
+;; DB for feature storing
 (defvar *feature-database* (make-hash-table :test #'equal))
 
 (defun clear-database ()
@@ -12,6 +13,7 @@
    *total-spams* 0
    *total-hams* 0))
 
+;; Classification functionality
 (defun classification (score)
   (cond
     ((<= score *max-ham-score*) 'ham)
@@ -21,6 +23,7 @@
 (defun classify (text)
   (classification (score (extract-features text))))
 
+;; Basic working object word, which will be used as feature for training
 (defclass word-feature ()
   ((word
     :initarg :word
@@ -43,6 +46,7 @@
     (with-slots (word ham-count spam-count) object
       (format stream "~s :hams ~d :spams ~d" word ham-count spam-count))))
 
+;; Feture extraction functionality
 (defun intern-feature (word)
   (or (gethash word *feature-database*)
       (setf (gethash word *feature-database*)
@@ -56,7 +60,7 @@
 (defun extract-features (text)
   (mapcar #'intern-feature (extract-words text)))
 
-
+;; Training algorithm
 (defvar *total-spams* 0)
 (defvar *total-hams* 0)
 
@@ -74,5 +78,21 @@
   (dolist (feature (extract-features text))
     (increment-count feature type))
   (increment-total-count type))
+
+(defun spam-probability (feature)
+  (with-slots (spam-count ham-count) feature)
+  (let ((spam-frequency (/ spam-count (max 1 *total-spams*)))
+        (ham-frequency (/ ham-count (max 1 *total-hams*))))
+    (/ spam-frequency (+ spam-frequency ham-frequency))))
+
+;; Robinson's bayasian spam probability function
+(defun bayesian-spam-probability (feature &optional
+                                            (assumed-probability 1/2)
+                                            (weight 1))
+  (let ((basic-probability (spam-probability feature))
+        (data-points (+ (spam-count feature) (ham-count feature))))
+    (/ (+ (* weight assumed-probability)
+          (* data-points basic-probability))
+       (+ weight data-points))))
 
 
