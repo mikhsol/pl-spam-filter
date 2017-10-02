@@ -1,8 +1,13 @@
+(defpackage :com.nwps.spam
+  (:use :common-lisp))
+
 (in-package :com.nwps.spam)
 
 ;; Global variables defenition
 (defparameter *max-ham-score* .4)
 (defparameter *min-spam-score* .6)
+(defvar *total-spams* 0)
+(defvar *total-hams* 0)
 
 ;; DB for feature storing
 (defvar *feature-database* (make-hash-table :test #'equal))
@@ -12,16 +17,6 @@
    *feature-database* (make-hash-table :test #'equal)
    *total-spams* 0
    *total-hams* 0))
-
-;; Classification functionality
-(defun classification (score)
-  (cond
-    ((<= score *max-ham-score*) 'ham)
-    ((>= score *min-spam-score*) 'spam)
-    (t 'unsure)))
-
-(defun classify (text)
-  (classification (score (extract-features text))))
 
 ;; Basic working object word, which will be used as feature for training
 (defclass word-feature ()
@@ -60,10 +55,28 @@
 (defun extract-features (text)
   (mapcar #'intern-feature (extract-words text)))
 
-;; Training algorithm
-(defvar *total-spams* 0)
-(defvar *total-hams* 0)
 
+;; Score function with Fisher method
+(defun untrained-p (feature)
+  (with-slots (spam-count ham-count) feature
+    (and (zerop spam-count) (zerop ham-count))))
+
+(defun inverse-chi-square (value degerese-of-freedom)
+  (assert (evenp degerese-of-freedom))
+  (min
+   (loop with m = (/ value 2)
+         for i below (/ degerese-of-freedom 2)
+         for prob = (exp (- m)) then (* prob (/ m i))
+         summing prob)
+   1.0))
+
+(defun fisher (probs number-of-probs)
+  "The Fisher computation described by Robinson."
+  (inverse-chi-square
+   (* -2 (reduce #'+ probs :key #'log))
+   (* 2 number-of-probs)))
+
+;; Training algorithm
 (defun increment-total-count (type)
   (ecase type
     (ham (incf *total-hams*))
@@ -80,10 +93,11 @@
   (increment-total-count type))
 
 (defun spam-probability (feature)
-  (with-slots (spam-count ham-count) feature)
-  (let ((spam-frequency (/ spam-count (max 1 *total-spams*)))
-        (ham-frequency (/ ham-count (max 1 *total-hams*))))
-    (/ spam-frequency (+ spam-frequency ham-frequency))))
+  (with-slots (spam-count ham-count) feature
+    (let ((spam-frequency (/ spam-count (max 1 *total-spams*)))
+          (ham-frequency (/ ham-count (max 1 *total-hams*))))
+      (/ spam-frequency (+ spam-frequency ham-frequency)))))
+
 
 ;; Robinson's bayasian spam probability function
 (defun bayesian-spam-probability (feature &optional
@@ -95,4 +109,28 @@
           (* data-points basic-probability))
        (+ weight data-points))))
 
+(defun score (fetures)
+  (let ((spam-probs ()) (ham-probs())(number-of-probs 0))
+    (dolist (feature fetures)
+      (unless (untrained-p feature)
+        (let ((spam-prob (float (bayesian-spam-probability feature) 0.0d0)))
+          (push spam-prob spam-probs)
+          (push (- 1.0d0 spam-prob) ham-probs)
+          (incf number-of-probs))))
+    (let ((h (- 1 (fisher spam-probs number-of-probs)))
+          (s (- 1 (fisher ham-probs number-of-probs))))
+      (/ (+ (- 1 h) s) 2.0d0))))
 
+
+;; Classification functionality
+(defun classification (score)
+  (values
+   (cond
+     ((<= score *max-ham-score*) 'ham)
+     ((>= score *min-spam-score*) 'spam)
+     (t 'unsure))
+   score))
+
+
+(defun classify (text)
+  (classification (score (extract-features text))))
