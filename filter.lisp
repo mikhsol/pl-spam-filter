@@ -36,3 +36,8 @@
     :initform 0
     :documentation "Number of hams we have seen this feature in.")))
 
+(defun intern-feature (word)
+  (or (gethash word *feature-database*)
+      (setf (gethash word *feature-database*)
+            (make-instance 'word-feature :word word))))
+
