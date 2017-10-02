@@ -9,15 +9,14 @@
 (defun clear-database ()
   (setf *feature-database* (make-hash-table :test #'equal)))
 
-(defun classify (text)
-  (classification (score (extract-features text))))
-
 (defun classification (score)
   (cond
     ((<= score *max-ham-score*) 'ham)
     ((>= score *min-spam-score*) 'spam)
     (t 'unsure)))
 
+(defun classify (text)
+  (classification (score (extract-features text))))
 
 (defclass word-feature ()
   ((word
@@ -36,8 +35,22 @@
     :initform 0
     :documentation "Number of hams we have seen this feature in.")))
 
+(defmethod print-object ((object word-feature) stream)
+  (print-unreadable-object (object stream :type t)
+    (with-slots (word ham-count spam-count) object
+      (format stream "~s :hams ~d :spams ~d" word ham-count spam-count))))
+
 (defun intern-feature (word)
   (or (gethash word *feature-database*)
       (setf (gethash word *feature-database*)
             (make-instance 'word-feature :word word))))
+
+(defun extract-words (text)
+  (delete-duplicates
+   (cl-ppcre:all-matches-as-strings "[a-zA-z]{3,}" text)
+   :test #'string=))
+
+(defun extract-features (text)
+  (mapcar #'intern-feature (extract-words text)))
+
 
