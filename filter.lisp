@@ -246,6 +246,7 @@
     (train-from-corpus shuffled :start 0 :end train-on)
         (test-from-corpus shuffled :start train-on)))
 
+;; Analyse results
 (defun result-type (result)
   (destructuring-bind (&key type classification &allow-other-keys) result
     (ecase type
@@ -274,3 +275,38 @@
 
 (defun correct-p (result)
     (eql (result-type result) 'correct))
+
+(defun analyse-results (results)
+  (let* ((keys '(total correct false-positive
+                 false-negative missed-ham missed-spam))
+         counts (loop for x in keys collect (cons x 0)))
+    (dolist (item results)
+      (incf (cdr (assoc 'total counts)))
+      (incf (cdr (assoc (result-type item) counts))))
+    (loop with total = (cdr (assoc 'total counts))
+          for (label . count) in counts
+          do (format t "~&~@(~a~):~20t~5d~,5t: ~6,2f%~%"
+                     label count (* 100 (/ count total))))))
+
+(defun show-summary (file text classification score)
+  (format t "~&~a" file)
+  (format t "~2%~a~2%" text)
+  (format t "Classified as ~a with score of ~,5f~%" classification score))
+
+(defun show-feature (feature)
+  (with-slots (word ham-count spam-count) feature
+    (format
+     t "~&~2t~a~30thams: ~5d; spams ~5d;~,10tprob: ~,f~%"
+     word ham-count spam-count (bayesian-spam-probability feature))))
+
+(defun sorted-interesting (features)
+  (sort (remove-if #'untrained-p features) #'< :key #'bayesian-spam-probability))
+
+(defun explain-classification (file)
+  (let* ((text (start-of-file file *max-chars*))
+         (features (extract-features text))
+         (score (score feature))
+         (classification (classification score)))
+    (show-summary file text classification score)
+    (dolist (feature (sorted-interesting features))
+      (show-feature))))
